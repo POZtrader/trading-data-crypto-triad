@@ -1,0 +1,44 @@
+name: Fetch BTC/ETH/XRP data
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Data inizio (YYYY-MM-DD), vuoto = solo ieri'
+        required: false
+      end_date:
+        description: 'Data fine (YYYY-MM-DD)'
+        required: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and extract
+        run: |
+          mkdir -p data
+          if [ -n "${{ github.event.inputs.start_date }}" ]; then
+            START="${{ github.event.inputs.start_date }}"
+            END="${{ github.event.inputs.end_date }}"
+          else
+            START=$(date -d "yesterday" +%Y-%m-%d)
+            END=$START
+          fi
+          D=$START
+          while [ "$(date -d "$D" +%s)" -le "$(date -d "$END" +%s)" ]; do
+            for SYM in BTCUSDT ETHUSDT XRPUSDT; do
+              URL="https://data.binance.vision/data/futures/um/daily/klines/${SYM}/1m/${SYM}-1m-${D}.zip"
+              curl -sL "$URL" -o tmp.zip && unzip -o tmp.zip -d data/ && rm tmp.zip
+            done
+            D=$(date -d "$D + 1 day" +%Y-%m-%d)
+          done
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/
+          git commit -m "Add data $START to $END" || echo "No changes"
+          git push
