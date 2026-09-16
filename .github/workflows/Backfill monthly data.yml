@@ -1,0 +1,38 @@
+name: Backfill monthly data
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_month:
+        description: 'Mese inizio (YYYY-MM)'
+        required: true
+      end_month:
+        description: 'Mese fine (YYYY-MM)'
+        required: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download monthly archives
+        run: |
+          mkdir -p data
+          START="${{ github.event.inputs.start_month }}-01"
+          END="${{ github.event.inputs.end_month }}-01"
+          M=$START
+          while [ "$(date -d "$M" +%s)" -le "$(date -d "$END" +%s)" ]; do
+            YM=$(date -d "$M" +%Y-%m)
+            for SYM in BTCUSDT ETHUSDT XRPUSDT; do
+              URL="https://data.binance.vision/data/futures/um/monthly/klines/${SYM}/1m/${SYM}-1m-${YM}.zip"
+              curl -sL "$URL" -o tmp.zip && unzip -o tmp.zip -d data/ && rm tmp.zip || echo "Mese $YM non disponibile per $SYM"
+            done
+            M=$(date -d "$M + 1 month" +%Y-%m-%d)
+          done
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/
+          git commit -m "Backfill monthly $START to $END" || echo "No changes"
+          git push
